@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="3.9.0">Jekyll</generator><link href="/feed.xml" rel="self" type="application/atom+xml" /><link href="/" rel="alternate" type="text/html" /><updated>2021-03-29T02:40:03+00:00</updated><id>/feed.xml</id><title type="html">Your awesome title</title><subtitle>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.</subtitle><entry><title type="html">记一次Spark程序遇到NoSuchMethodError后的解决过程</title><link href="/jekyll/update/2021/03/28/fix-no-such-method-error-for-a-spark-app.html" rel="alternate" type="text/html" title="记一次Spark程序遇到NoSuchMethodError后的解决过程" /><published>2021-03-28T17:36:40+00:00</published><updated>2021-03-28T17:36:40+00:00</updated><id>/jekyll/update/2021/03/28/fix-no-such-method-error-for-a-spark-app</id><content type="html" xml:base="/jekyll/update/2021/03/28/fix-no-such-method-error-for-a-spark-app.html">&lt;p&gt;当我需要开发 Spark 作业时，我会使用组里一套封装好的 Spark 作业框架作为基础。框架会处理包括 Spark、Hive 等基础库的依赖管理，而我只需要关注计算逻辑的实现。然而最近，我需要在一个不同的 Spark 版本上开发一个作业，因此我决定绕过作业框架，自己配置整个项目的构建，包括处理基础库的依赖管理。&lt;/p&gt;
+
+&lt;p&gt;可当我写完代码，兴冲冲地将作业提交到集群上时，DUANG！程序崩了：&lt;/p&gt;
+&lt;div class=&quot;language-console highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;gp&quot;&gt;Exception in thread &quot;main&quot; java.lang.NoSuchMethodError: org.apache.hadoop.hive.ql.log.PerfLogger.getPerfLogger()Lorg/apache/hadoop/hive/ql/log/PerfLogger;&lt;/span&gt;&lt;span class=&quot;w&quot;&gt;
+&lt;/span&gt;&lt;span class=&quot;go&quot;&gt;// balabala....
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;通常，这类错误是对同一依赖的版本冲突导致的。比如，程序依赖的两个中间库 A，B 又都依赖了底层库 C 的两个不兼容的版本，而构建工具在构建时选择了其中一个版本，就会导致另一个中间库在调用 C 时发生错误。因此，我准备先找到出错的 &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;PerfLogger&lt;/code&gt; 属于哪个中间库，再看看这个中间库在项目中是被如何依赖的。&lt;/p&gt;
+
+&lt;div class=&quot;premonition warning&quot;&gt;
+  &lt;i class=&quot;premonition pn-warn&quot;&gt;&lt;/i&gt;
+  &lt;div class=&quot;content&quot;&gt;
+    &lt;p&gt;实际上，由于 Spark 程序执行时的依赖既可能来源于用户自己构建的 jar，也可能来源于作业提交时通过诸如 &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;spark.jars&lt;/code&gt;，&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;spark.yarn.archive&lt;/code&gt; 等参数额外传入的 jar。因此，版本冲突未必发生在用户 jar 内部，也可能发生在用户 jar 和额外传入 jar 之间。在这个案例里，我其实做了额外的工作排除了这一可能。&lt;/p&gt;
+
+
+
+
+  &lt;/div&gt;
+&lt;/div&gt;
+
+&lt;p&gt;找到一个类所属的 jar 可以通过下面两个方法:&lt;/p&gt;
+&lt;ol&gt;
+  &lt;li&gt;如果使用 IntelliJ，可以在 Search Everywhere（即快捷键 double shift）中搜索该类名；&lt;/li&gt;
+  &lt;li&gt;如果使用 Maven，可以通过 Maven Dependency Plugin 收集所有依赖的 jar，再对每个 jar 检查是否包含这个类。具体过程如下：&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;mvn dependency:copy-dependencies &lt;span class=&quot;nt&quot;&gt;-DoutputDirectory&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;target/libs
+&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;cd &lt;/span&gt;target/libs
+&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;&lt;span class=&quot;k&quot;&gt;for &lt;/span&gt;j &lt;span class=&quot;k&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;sb&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;ls&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;*&lt;/span&gt;.jar&lt;span class=&quot;sb&quot;&gt;`&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;do &lt;/span&gt;jar tf &lt;span class=&quot;nv&quot;&gt;$j&lt;/span&gt; | &lt;span class=&quot;nb&quot;&gt;grep&lt;/span&gt; &lt;span class=&quot;nt&quot;&gt;-qe&lt;/span&gt; &lt;span class=&quot;s2&quot;&gt;&quot;PerfLogger&quot;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;echo&lt;/span&gt; &lt;span class=&quot;nv&quot;&gt;$j&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;done
+&lt;/span&gt;hive-common-1.1.0-cdh5.7.3.jar
+hive-exec-1.2.1.spark2.jar
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;好家伙，居然在两个 jar 中都搜到了这个类。看来这次的问题不是同一个 jar 的版本冲突，而是两个不同 jar 之间的冲突。于是，我分别验证了这两个 jar 中的 &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;PerfLogger&lt;/code&gt; 的类信息：&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;c&quot;&gt;# 检查 hive-common-1.1.0-cdh5.7.3.jar 中的 PerfLogger&lt;/span&gt;
+&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;&lt;span class=&quot;nb&quot;&gt;mkdir &lt;/span&gt;hive-common &lt;span class=&quot;o&quot;&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;cd &lt;/span&gt;hive-common
+&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;jar xf ../hive-common-1.1.0-cdh5.7.3.jar
+&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;javap org/apache/hadoop/hive/ql/log/PerfLogger.class
+Compiled from &lt;span class=&quot;s2&quot;&gt;&quot;PerfLogger.java&quot;&lt;/span&gt;
+public class org.apache.hadoop.hive.ql.log.PerfLogger &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+  public static final java.lang.String ACQUIRE_READ_WRITE_LOCKS&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  public static final java.lang.String COMPILE&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  ...
+  public static org.apache.hadoop.hive.ql.log.PerfLogger getPerfLogger&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;org.apache.hadoop.hive.conf.HiveConf, boolean&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  ...
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;c&quot;&gt;# 对 hive-exec-1.2.1.spark2.jar 执行同样的操作&lt;/span&gt;
+Compiled from &lt;span class=&quot;s2&quot;&gt;&quot;PerfLogger.java&quot;&lt;/span&gt;
+public class org.apache.hadoop.hive.ql.log.PerfLogger &lt;span class=&quot;o&quot;&gt;{&lt;/span&gt;
+  public static final java.lang.String ACQUIRE_READ_WRITE_LOCKS&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  public static final java.lang.String COMPILE&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  ...
+  public static org.apache.hadoop.hive.ql.log.PerfLogger getPerfLogger&lt;span class=&quot;o&quot;&gt;()&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  public static org.apache.hadoop.hive.ql.log.PerfLogger getPerfLogger&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;boolean&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+  ...
+&lt;span class=&quot;o&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;果然，在 &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;hive-common-1.1.0-cdh5.7.3.jar&lt;/code&gt; 中的 &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;PerfLogger&lt;/code&gt; 并没有无参的 &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;getPerfLogger&lt;/code&gt; 方法，而 Maven 选择将这个 jar 中的 &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;PerfLogger&lt;/code&gt; 打进了最终的用户 jar 中，从而导致了最开始错误。那么，为啥 Maven 会选择使用 &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;hive-common-1.1.0-cdh5.7.3.jar&lt;/code&gt; 中的类呢？其实，Maven 项目存在一个 build classpath，Maven 在构建时会优先使用 build class 更靠前的 jar 中的类。&lt;/p&gt;
+
+&lt;p&gt;使用 Maven Dependency Plugin 可以查看项目 build classpath：&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;mvn dependency:build-classpath &lt;span class=&quot;s1&quot;&gt;'-Dmdep.pathSeparator=${line.separator}'&lt;/span&gt;
+...
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;INFO] &lt;span class=&quot;nt&quot;&gt;---&lt;/span&gt; maven-dependency-plugin:2.8:build-classpath &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;default-cli&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; @ pipeline &lt;span class=&quot;nt&quot;&gt;---&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;INFO] Dependencies classpath:
+/home/tao.wang/.m2/repository/org/scala-lang/scala-library/2.11.12/scala-library-2.11.12.jar
+/home/tao.wang/.m2/repository/com/google/guava/guava/30.1.1-jre/guava-30.1.1-jre.jar
+...
+/home/tao.wang/.m2/repository/org/apache/hive/hive-common/1.1.0-cdh5.7.3/hive-common-1.1.0-cdh5.7.3.jar
+...
+/home/tao.wang/.m2/repository/org/spark-project/hive/hive-exec/1.2.1.spark2/hive-exec-1.2.1.spark2.jar
+...
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;果然，&lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;hive-common-1.1.0-cdh5.7.3.jar&lt;/code&gt; 在 build classpath 中是更靠前的一个。&lt;/p&gt;
+
+&lt;p&gt;接下来，我们需要知道这两个 jar 在项目中是怎样被依赖的，还是通过 Maven Dependency Plugin：&lt;/p&gt;
+
+&lt;div class=&quot;language-bash highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;mvn dependency:tree &lt;span class=&quot;nt&quot;&gt;-Dincludes&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;org.apache.hive:hive-common
+...
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;INFO] &lt;span class=&quot;nt&quot;&gt;---&lt;/span&gt; maven-dependency-plugin:2.8:tree &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;default-cli&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; @ pipeline &lt;span class=&quot;nt&quot;&gt;---&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;INFO] com.xxx.yyy.zzzpoc:pipeline:jar:1.0-SNAPSHOT
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;INFO] &lt;span class=&quot;se&quot;&gt;\-&lt;/span&gt; com.xxx.yyy.database:presto:jar:0.0.4:compile
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;INFO]    &lt;span class=&quot;se&quot;&gt;\-&lt;/span&gt; org.apache.hive:hive-jdbc:jar:1.1.0-cdh5.7.3:compile
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;INFO]       &lt;span class=&quot;se&quot;&gt;\-&lt;/span&gt; org.apache.hive:hive-common:jar:1.1.0-cdh5.7.3:compile
+...
+
+&lt;span class=&quot;nv&quot;&gt;$ &lt;/span&gt;mvn dependency:tree &lt;span class=&quot;nt&quot;&gt;-Dincludes&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;=&lt;/span&gt;org.spark-project.hive:hive-exec
+...
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;INFO] &lt;span class=&quot;nt&quot;&gt;---&lt;/span&gt; maven-dependency-plugin:2.8:tree &lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;default-cli&lt;span class=&quot;o&quot;&gt;)&lt;/span&gt; @ pipeline &lt;span class=&quot;nt&quot;&gt;---&lt;/span&gt;
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;INFO] com.xxx.yyy.zzzpoc:pipeline:jar:1.0-SNAPSHOT
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;INFO] &lt;span class=&quot;se&quot;&gt;\-&lt;/span&gt; org.apache.spark:spark-hive_2.11:jar:2.3.4:provided
+&lt;span class=&quot;o&quot;&gt;[&lt;/span&gt;INFO]    &lt;span class=&quot;se&quot;&gt;\-&lt;/span&gt; org.spark-project.hive:hive-exec:jar:1.2.1.spark2:provided
+...
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;这个 &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;com.xxx.yyy.database:presto&lt;/code&gt; 其实也是组里为使用公司 Presto 集群封装的一个 jar，但为啥有 Hive 的依赖？看来封装得有点问题。。&lt;/p&gt;
+
+&lt;p&gt;最后，怎么解决这个问题呢？一种思路是调整依赖在 build classpath 中的顺序，让 Maven 选择正确的 jar 来构建，但这个方法不够健壮。另外，由于 &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;hive-exec-1.2.1.spark2.jar&lt;/code&gt; 是一个 provided dependency，这样做依然不能使该 jar 中的类被打入到最终 jar 中。&lt;/p&gt;
+
+&lt;p&gt;因此，更合适的方法是将 &lt;code class=&quot;language-plaintext highlighter-rouge&quot;&gt;hive-common-1.1.0-cdh5.7.3.jar&lt;/code&gt; 排除在 dependency tree 之外。&lt;/p&gt;
+
+&lt;div class=&quot;language-xml highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nt&quot;&gt;&amp;lt;dependency&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;&amp;lt;groupId&amp;gt;&lt;/span&gt;com.xxx.yyy.database&lt;span class=&quot;nt&quot;&gt;&amp;lt;/groupId&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;&amp;lt;artifactId&amp;gt;&lt;/span&gt;presto&lt;span class=&quot;nt&quot;&gt;&amp;lt;/artifactId&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;&amp;lt;version&amp;gt;&lt;/span&gt;0.0.4&lt;span class=&quot;nt&quot;&gt;&amp;lt;/version&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;&amp;lt;exclusions&amp;gt;&lt;/span&gt;
+        &lt;span class=&quot;nt&quot;&gt;&amp;lt;exclusion&amp;gt;&lt;/span&gt;
+            &lt;span class=&quot;nt&quot;&gt;&amp;lt;groupId&amp;gt;&lt;/span&gt;org.apache.hive&lt;span class=&quot;nt&quot;&gt;&amp;lt;/groupId&amp;gt;&lt;/span&gt;
+            &lt;span class=&quot;nt&quot;&gt;&amp;lt;artifactId&amp;gt;&lt;/span&gt;hive-common&lt;span class=&quot;nt&quot;&gt;&amp;lt;/artifactId&amp;gt;&lt;/span&gt;
+        &lt;span class=&quot;nt&quot;&gt;&amp;lt;/exclusion&amp;gt;&lt;/span&gt;
+    &lt;span class=&quot;nt&quot;&gt;&amp;lt;/exclusions&amp;gt;&lt;/span&gt;
+&lt;span class=&quot;nt&quot;&gt;&amp;lt;/dependency&amp;gt;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;改完之后，程序就能顺利跑过啦！&lt;/p&gt;</content><author><name></name></author><category term="jekyll" /><category term="update" /><summary type="html">当我需要开发 Spark 作业时，我会使用组里一套封装好的 Spark 作业框架作为基础。框架会处理包括 Spark、Hive 等基础库的依赖管理，而我只需要关注计算逻辑的实现。然而最近，我需要在一个不同的 Spark 版本上开发一个作业，因此我决定绕过作业框架，自己配置整个项目的构建，包括处理基础库的依赖管理。</summary></entry></feed>

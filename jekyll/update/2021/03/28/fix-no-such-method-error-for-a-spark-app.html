@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.7.1 -->
+<title>记一次Spark程序遇到NoSuchMethodError后的解决过程 | Your awesome title</title>
+<meta name="generator" content="Jekyll v3.9.0" />
+<meta property="og:title" content="记一次Spark程序遇到NoSuchMethodError后的解决过程" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="当我需要开发 Spark 作业时，我会使用组里一套封装好的 Spark 作业框架作为基础。框架会处理包括 Spark、Hive 等基础库的依赖管理，而我只需要关注计算逻辑的实现。然而最近，我需要在一个不同的 Spark 版本上开发一个作业，因此我决定绕过作业框架，自己配置整个项目的构建，包括处理基础库的依赖管理。" />
+<meta property="og:description" content="当我需要开发 Spark 作业时，我会使用组里一套封装好的 Spark 作业框架作为基础。框架会处理包括 Spark、Hive 等基础库的依赖管理，而我只需要关注计算逻辑的实现。然而最近，我需要在一个不同的 Spark 版本上开发一个作业，因此我决定绕过作业框架，自己配置整个项目的构建，包括处理基础库的依赖管理。" />
+<link rel="canonical" href="/jekyll/update/2021/03/28/fix-no-such-method-error-for-a-spark-app.html" />
+<meta property="og:url" content="/jekyll/update/2021/03/28/fix-no-such-method-error-for-a-spark-app.html" />
+<meta property="og:site_name" content="Your awesome title" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2021-03-28T17:36:40+00:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="记一次Spark程序遇到NoSuchMethodError后的解决过程" />
+<script type="application/ld+json">
+{"mainEntityOfPage":{"@type":"WebPage","@id":"/jekyll/update/2021/03/28/fix-no-such-method-error-for-a-spark-app.html"},"description":"当我需要开发 Spark 作业时，我会使用组里一套封装好的 Spark 作业框架作为基础。框架会处理包括 Spark、Hive 等基础库的依赖管理，而我只需要关注计算逻辑的实现。然而最近，我需要在一个不同的 Spark 版本上开发一个作业，因此我决定绕过作业框架，自己配置整个项目的构建，包括处理基础库的依赖管理。","url":"/jekyll/update/2021/03/28/fix-no-such-method-error-for-a-spark-app.html","@type":"BlogPosting","headline":"记一次Spark程序遇到NoSuchMethodError后的解决过程","dateModified":"2021-03-28T17:36:40+00:00","datePublished":"2021-03-28T17:36:40+00:00","@context":"https://schema.org"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/main.css">
+  <link rel="stylesheet" href="/assets/css/styles.css"><link type="application/atom+xml" rel="alternate" href="/feed.xml" title="Your awesome title" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/">Your awesome title</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">记一次Spark程序遇到NoSuchMethodError后的解决过程</h1>
+    <p class="post-meta">
+      <time class="dt-published" datetime="2021-03-28T17:36:40+00:00" itemprop="datePublished">Mar 28, 2021
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <p>当我需要开发 Spark 作业时，我会使用组里一套封装好的 Spark 作业框架作为基础。框架会处理包括 Spark、Hive 等基础库的依赖管理，而我只需要关注计算逻辑的实现。然而最近，我需要在一个不同的 Spark 版本上开发一个作业，因此我决定绕过作业框架，自己配置整个项目的构建，包括处理基础库的依赖管理。</p>
+
+<p>可当我写完代码，兴冲冲地将作业提交到集群上时，DUANG！程序崩了：</p>
+<div class="language-console highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="gp">Exception in thread "main" java.lang.NoSuchMethodError: org.apache.hadoop.hive.ql.log.PerfLogger.getPerfLogger()Lorg/apache/hadoop/hive/ql/log/PerfLogger;</span><span class="w">
+</span><span class="go">// balabala....
+</span></code></pre></div></div>
+
+<p>通常，这类错误是对同一依赖的版本冲突导致的。比如，程序依赖的两个中间库 A，B 又都依赖了底层库 C 的两个不兼容的版本，而构建工具在构建时选择了其中一个版本，就会导致另一个中间库在调用 C 时发生错误。因此，我准备先找到出错的 <code class="language-plaintext highlighter-rouge">PerfLogger</code> 属于哪个中间库，再看看这个中间库在项目中是被如何依赖的。</p>
+
+<div class="premonition warning">
+  <i class="premonition pn-warn"></i>
+  <div class="content">
+    <p>实际上，由于 Spark 程序执行时的依赖既可能来源于用户自己构建的 jar，也可能来源于作业提交时通过诸如 <code class="language-plaintext highlighter-rouge">spark.jars</code>，<code class="language-plaintext highlighter-rouge">spark.yarn.archive</code> 等参数额外传入的 jar。因此，版本冲突未必发生在用户 jar 内部，也可能发生在用户 jar 和额外传入 jar 之间。在这个案例里，我其实做了额外的工作排除了这一可能。</p>
+
+
+
+
+  </div>
+</div>
+
+<p>找到一个类所属的 jar 可以通过下面两个方法:</p>
+<ol>
+  <li>如果使用 IntelliJ，可以在 Search Everywhere（即快捷键 double shift）中搜索该类名；</li>
+  <li>如果使用 Maven，可以通过 Maven Dependency Plugin 收集所有依赖的 jar，再对每个 jar 检查是否包含这个类。具体过程如下：</li>
+</ol>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>mvn dependency:copy-dependencies <span class="nt">-DoutputDirectory</span><span class="o">=</span>target/libs
+<span class="nv">$ </span><span class="nb">cd </span>target/libs
+<span class="nv">$ </span><span class="k">for </span>j <span class="k">in</span> <span class="sb">`</span><span class="nb">ls</span> <span class="k">*</span>.jar<span class="sb">`</span><span class="p">;</span> <span class="k">do </span>jar tf <span class="nv">$j</span> | <span class="nb">grep</span> <span class="nt">-qe</span> <span class="s2">"PerfLogger"</span> <span class="o">&amp;&amp;</span> <span class="nb">echo</span> <span class="nv">$j</span><span class="p">;</span> <span class="k">done
+</span>hive-common-1.1.0-cdh5.7.3.jar
+hive-exec-1.2.1.spark2.jar
+</code></pre></div></div>
+
+<p>好家伙，居然在两个 jar 中都搜到了这个类。看来这次的问题不是同一个 jar 的版本冲突，而是两个不同 jar 之间的冲突。于是，我分别验证了这两个 jar 中的 <code class="language-plaintext highlighter-rouge">PerfLogger</code> 的类信息：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># 检查 hive-common-1.1.0-cdh5.7.3.jar 中的 PerfLogger</span>
+<span class="nv">$ </span><span class="nb">mkdir </span>hive-common <span class="o">&amp;&amp;</span> <span class="nb">cd </span>hive-common
+<span class="nv">$ </span>jar xf ../hive-common-1.1.0-cdh5.7.3.jar
+<span class="nv">$ </span>javap org/apache/hadoop/hive/ql/log/PerfLogger.class
+Compiled from <span class="s2">"PerfLogger.java"</span>
+public class org.apache.hadoop.hive.ql.log.PerfLogger <span class="o">{</span>
+  public static final java.lang.String ACQUIRE_READ_WRITE_LOCKS<span class="p">;</span>
+  public static final java.lang.String COMPILE<span class="p">;</span>
+  ...
+  public static org.apache.hadoop.hive.ql.log.PerfLogger getPerfLogger<span class="o">(</span>org.apache.hadoop.hive.conf.HiveConf, boolean<span class="o">)</span><span class="p">;</span>
+  ...
+<span class="o">}</span>
+
+<span class="c"># 对 hive-exec-1.2.1.spark2.jar 执行同样的操作</span>
+Compiled from <span class="s2">"PerfLogger.java"</span>
+public class org.apache.hadoop.hive.ql.log.PerfLogger <span class="o">{</span>
+  public static final java.lang.String ACQUIRE_READ_WRITE_LOCKS<span class="p">;</span>
+  public static final java.lang.String COMPILE<span class="p">;</span>
+  ...
+  public static org.apache.hadoop.hive.ql.log.PerfLogger getPerfLogger<span class="o">()</span><span class="p">;</span>
+  public static org.apache.hadoop.hive.ql.log.PerfLogger getPerfLogger<span class="o">(</span>boolean<span class="o">)</span><span class="p">;</span>
+  ...
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>果然，在 <code class="language-plaintext highlighter-rouge">hive-common-1.1.0-cdh5.7.3.jar</code> 中的 <code class="language-plaintext highlighter-rouge">PerfLogger</code> 并没有无参的 <code class="language-plaintext highlighter-rouge">getPerfLogger</code> 方法，而 Maven 选择将这个 jar 中的 <code class="language-plaintext highlighter-rouge">PerfLogger</code> 打进了最终的用户 jar 中，从而导致了最开始错误。那么，为啥 Maven 会选择使用 <code class="language-plaintext highlighter-rouge">hive-common-1.1.0-cdh5.7.3.jar</code> 中的类呢？其实，Maven 项目存在一个 build classpath，Maven 在构建时会优先使用 build class 更靠前的 jar 中的类。</p>
+
+<p>使用 Maven Dependency Plugin 可以查看项目 build classpath：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>mvn dependency:build-classpath <span class="s1">'-Dmdep.pathSeparator=${line.separator}'</span>
+...
+<span class="o">[</span>INFO] <span class="nt">---</span> maven-dependency-plugin:2.8:build-classpath <span class="o">(</span>default-cli<span class="o">)</span> @ pipeline <span class="nt">---</span>
+<span class="o">[</span>INFO] Dependencies classpath:
+/home/tao.wang/.m2/repository/org/scala-lang/scala-library/2.11.12/scala-library-2.11.12.jar
+/home/tao.wang/.m2/repository/com/google/guava/guava/30.1.1-jre/guava-30.1.1-jre.jar
+...
+/home/tao.wang/.m2/repository/org/apache/hive/hive-common/1.1.0-cdh5.7.3/hive-common-1.1.0-cdh5.7.3.jar
+...
+/home/tao.wang/.m2/repository/org/spark-project/hive/hive-exec/1.2.1.spark2/hive-exec-1.2.1.spark2.jar
+...
+</code></pre></div></div>
+
+<p>果然，<code class="language-plaintext highlighter-rouge">hive-common-1.1.0-cdh5.7.3.jar</code> 在 build classpath 中是更靠前的一个。</p>
+
+<p>接下来，我们需要知道这两个 jar 在项目中是怎样被依赖的，还是通过 Maven Dependency Plugin：</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">$ </span>mvn dependency:tree <span class="nt">-Dincludes</span><span class="o">=</span>org.apache.hive:hive-common
+...
+<span class="o">[</span>INFO] <span class="nt">---</span> maven-dependency-plugin:2.8:tree <span class="o">(</span>default-cli<span class="o">)</span> @ pipeline <span class="nt">---</span>
+<span class="o">[</span>INFO] com.xxx.yyy.zzzpoc:pipeline:jar:1.0-SNAPSHOT
+<span class="o">[</span>INFO] <span class="se">\-</span> com.xxx.yyy.database:presto:jar:0.0.4:compile
+<span class="o">[</span>INFO]    <span class="se">\-</span> org.apache.hive:hive-jdbc:jar:1.1.0-cdh5.7.3:compile
+<span class="o">[</span>INFO]       <span class="se">\-</span> org.apache.hive:hive-common:jar:1.1.0-cdh5.7.3:compile
+...
+
+<span class="nv">$ </span>mvn dependency:tree <span class="nt">-Dincludes</span><span class="o">=</span>org.spark-project.hive:hive-exec
+...
+<span class="o">[</span>INFO] <span class="nt">---</span> maven-dependency-plugin:2.8:tree <span class="o">(</span>default-cli<span class="o">)</span> @ pipeline <span class="nt">---</span>
+<span class="o">[</span>INFO] com.xxx.yyy.zzzpoc:pipeline:jar:1.0-SNAPSHOT
+<span class="o">[</span>INFO] <span class="se">\-</span> org.apache.spark:spark-hive_2.11:jar:2.3.4:provided
+<span class="o">[</span>INFO]    <span class="se">\-</span> org.spark-project.hive:hive-exec:jar:1.2.1.spark2:provided
+...
+</code></pre></div></div>
+
+<p>这个 <code class="language-plaintext highlighter-rouge">com.xxx.yyy.database:presto</code> 其实也是组里为使用公司 Presto 集群封装的一个 jar，但为啥有 Hive 的依赖？看来封装得有点问题。。</p>
+
+<p>最后，怎么解决这个问题呢？一种思路是调整依赖在 build classpath 中的顺序，让 Maven 选择正确的 jar 来构建，但这个方法不够健壮。另外，由于 <code class="language-plaintext highlighter-rouge">hive-exec-1.2.1.spark2.jar</code> 是一个 provided dependency，这样做依然不能使该 jar 中的类被打入到最终 jar 中。</p>
+
+<p>因此，更合适的方法是将 <code class="language-plaintext highlighter-rouge">hive-common-1.1.0-cdh5.7.3.jar</code> 排除在 dependency tree 之外。</p>
+
+<div class="language-xml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nt">&lt;dependency&gt;</span>
+    <span class="nt">&lt;groupId&gt;</span>com.xxx.yyy.database<span class="nt">&lt;/groupId&gt;</span>
+    <span class="nt">&lt;artifactId&gt;</span>presto<span class="nt">&lt;/artifactId&gt;</span>
+    <span class="nt">&lt;version&gt;</span>0.0.4<span class="nt">&lt;/version&gt;</span>
+    <span class="nt">&lt;exclusions&gt;</span>
+        <span class="nt">&lt;exclusion&gt;</span>
+            <span class="nt">&lt;groupId&gt;</span>org.apache.hive<span class="nt">&lt;/groupId&gt;</span>
+            <span class="nt">&lt;artifactId&gt;</span>hive-common<span class="nt">&lt;/artifactId&gt;</span>
+        <span class="nt">&lt;/exclusion&gt;</span>
+    <span class="nt">&lt;/exclusions&gt;</span>
+<span class="nt">&lt;/dependency&gt;</span>
+</code></pre></div></div>
+
+<p>改完之后，程序就能顺利跑过啦！</p>
+
+  </div><a class="u-url" href="/jekyll/update/2021/03/28/fix-no-such-method-error-for-a-spark-app.html" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Your awesome title</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">Your awesome title</li><li><a class="u-email" href="mailto:your-email@example.com">your-email@example.com</a></li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2"><ul class="social-media-list"><li><a href="https://github.com/wangtZJU"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#github"></use></svg> <span class="username">wangtZJU</span></a></li></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>
